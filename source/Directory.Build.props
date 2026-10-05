@@ -1,0 +1,27 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project>
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+  <PropertyGroup>
+    <TargetFrameworks>net462;net6.0;net8.0;net10.0</TargetFrameworks>
+    <ArtifactsPath>..\..\out</ArtifactsPath>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <IsPackable>true</IsPackable>
+    <GenerateDocumentationFile>True</GenerateDocumentationFile>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SourceLink.GitHub"
+                      PrivateAssets="All"
+                      Condition="'$(TargetFramework)' == 'net462' Or
+                                 '$(TargetFramework)' == 'net48' Or
+                                 '$(TargetFramework)' == 'net8.0' Or
+                                 '$(TargetFramework)' == 'net8.0-windows' Or
+                                 '$(TargetFramework)' == 'net10.0' Or
+                                 '$(TargetFramework)' == 'net10.0-windows'" />
+  </ItemGroup>
+</Project>
