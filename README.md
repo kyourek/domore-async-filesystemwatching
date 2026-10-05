@@ -30,7 +30,7 @@ using var subscription = FileSystemEventTasks.Add(
     });
 ```
 
-Disposing the subscription removes the callback, and errors and cancellations are reported through optional handlers instead of disappearing. Subscriptions to the same directory share a single watcher, and a watcher that fails can restart itself. Targets .NET Framework 4.6.2 and .NET 6 or later.
+Disposing the subscription removes the callback. Errors and cancellations are reported through static events that support multiple subscribers. Event handlers register task delegates with `eventArgs.Add`; those delegates receive the result or exception and cancellation token after the handlers return, and their tasks are awaited together. Subscriptions to the same directory share a single watcher, and a watcher that fails can restart if an unhandled-error delegate's task returns `true`. Targets .NET Framework 4.6.2 and .NET 6 or later.
 
 📖 [Full Domore.Async.FileSystemWatching documentation](source/Domore.Async.FileSystemWatching/README.md)
 

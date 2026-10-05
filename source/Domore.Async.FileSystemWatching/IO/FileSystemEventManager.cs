@@ -9,6 +9,11 @@ namespace Domore.IO;
 /// <summary>
 /// Manages file-system event subscriptions.
 /// </summary>
+/// <remarks>
+/// Outcome events support multiple subscribers. Each subscriber registers asynchronous work through
+/// the event arguments' Add method. The event source invokes that work after the event handlers return
+/// and awaits all returned tasks. Subscribe with += and unsubscribe with -=.
+/// </remarks>
 public sealed class FileSystemEventManager {
     private readonly Agent CaseSensitiveAgent;
     private readonly Agent CaseInsensitiveAgent;
@@ -75,23 +80,45 @@ public sealed class FileSystemEventManager {
     internal TimeSpan ClearDelay { get; set; } = TimeSpan.FromSeconds(1);
 
     /// <summary>
-    /// Occurs when an unhandled error occurs while processing file-system events.
+    /// Occurs when a watcher fails or reporting a subscription result fails.
     /// </summary>
+    /// <remarks>
+    /// Subscribers register task delegates through <see cref="FileSystemEventUnhandledErrorEventArgs.Add"/>.
+    /// After the event handlers return, the delegates receive the exception and cancellation token and their
+    /// tasks are awaited together. If all tasks complete successfully and any result is true, processing continues
+    /// after a notification failure, or the watcher restarts after a watcher failure. If no result is true,
+    /// the watcher stops.
+    /// </remarks>
     public event EventHandler<FileSystemEventUnhandledErrorEventArgs> OnUnhandledError;
 
     /// <summary>
     /// Occurs when a subscription event completes successfully.
     /// </summary>
+    /// <remarks>
+    /// Subscribers register task delegates through <see cref="FileSystemEventResultEventArgs.Add"/>.
+    /// After the event handlers return, the delegates receive the operation result and cancellation token,
+    /// and the event source awaits all returned tasks.
+    /// </remarks>
     public event EventHandler<FileSystemEventResultEventArgs> OnSubscriptionEventComplete;
 
     /// <summary>
     /// Occurs when a subscription event is canceled.
     /// </summary>
+    /// <remarks>
+    /// Subscribers register task delegates through <see cref="FileSystemEventResultEventArgs.Add"/>.
+    /// After the event handlers return, the delegates receive the operation result and cancellation token,
+    /// and the event source awaits all returned tasks.
+    /// </remarks>
     public event EventHandler<FileSystemEventResultEventArgs> OnSubscriptionEventCanceled;
 
     /// <summary>
     /// Occurs when a subscription event fails with an error.
     /// </summary>
+    /// <remarks>
+    /// Subscribers register task delegates through <see cref="FileSystemEventResultEventArgs.Add"/>.
+    /// After the event handlers return, the delegates receive the operation result and cancellation token,
+    /// and the event source awaits all returned tasks.
+    /// </remarks>
     public event EventHandler<FileSystemEventResultEventArgs> OnSubscriptionEventError;
 
     /// <summary>

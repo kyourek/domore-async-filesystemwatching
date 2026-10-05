@@ -10,6 +10,11 @@ namespace Domore.IO;
 /// <summary>
 /// Adds callbacks for file-system events.
 /// </summary>
+/// <remarks>
+/// Outcome events support multiple subscribers. Each subscriber registers asynchronous work through
+/// the event arguments' Add method. The event source invokes that work after the event handlers return
+/// and awaits all returned tasks. Subscribe with += and unsubscribe with -=.
+/// </remarks>
 public static class FileSystemEventTasks {
     private static readonly FileSystemEventManager Manager = new();
 
@@ -84,33 +89,66 @@ public static class FileSystemEventTasks {
     }
 
     /// <summary>
-    /// Occurs when an unhandled error occurs while managing file-system events.
+    /// Occurs when a watcher fails or reporting a subscription or manager result fails.
     /// </summary>
+    /// <remarks>
+    /// Subscribers register task delegates through <see cref="FileSystemEventUnhandledErrorEventArgs.Add"/>.
+    /// After the event handlers return, the delegates receive the exception and cancellation token and their
+    /// tasks are awaited together. If all tasks complete successfully and any result is true, processing continues
+    /// after a subscription notification failure, or the watcher restarts after a watcher failure. For failures
+    /// while reporting a manager operation, a true result marks the error as handled. If no result is true,
+    /// the watcher stops or the manager-operation error is rethrown.
+    /// </remarks>
     public static event EventHandler<FileSystemEventUnhandledErrorEventArgs> OnUnhandledError;
 
     /// <summary>
     /// Occurs when a subscription event completes successfully.
     /// </summary>
+    /// <remarks>
+    /// Subscribers register task delegates through <see cref="FileSystemEventResultEventArgs.Add"/>.
+    /// After the event handlers return, the delegates receive the operation result and cancellation token,
+    /// and the event source awaits all returned tasks.
+    /// </remarks>
     public static event EventHandler<FileSystemEventResultEventArgs> OnSubscriptionEventComplete;
 
     /// <summary>
     /// Occurs when a subscription event is canceled.
     /// </summary>
+    /// <remarks>
+    /// Subscribers register task delegates through <see cref="FileSystemEventResultEventArgs.Add"/>.
+    /// After the event handlers return, the delegates receive the operation result and cancellation token,
+    /// and the event source awaits all returned tasks.
+    /// </remarks>
     public static event EventHandler<FileSystemEventResultEventArgs> OnSubscriptionEventCanceled;
 
     /// <summary>
     /// Occurs when a subscription event fails with an error.
     /// </summary>
+    /// <remarks>
+    /// Subscribers register task delegates through <see cref="FileSystemEventResultEventArgs.Add"/>.
+    /// After the event handlers return, the delegates receive the operation result and cancellation token,
+    /// and the event source awaits all returned tasks.
+    /// </remarks>
     public static event EventHandler<FileSystemEventResultEventArgs> OnSubscriptionEventError;
 
     /// <summary>
     /// Occurs when a manager operation fails with an error.
     /// </summary>
+    /// <remarks>
+    /// Subscribers register task delegates through <see cref="FileSystemEventResultEventArgs.Add"/>.
+    /// After the event handlers return, the delegates receive the operation result and cancellation token,
+    /// and the event source awaits all returned tasks.
+    /// </remarks>
     public static event EventHandler<FileSystemEventResultEventArgs> OnManagerError;
 
     /// <summary>
     /// Occurs when a manager operation is canceled.
     /// </summary>
+    /// <remarks>
+    /// Subscribers register task delegates through <see cref="FileSystemEventResultEventArgs.Add"/>.
+    /// After the event handlers return, the delegates receive the operation result and cancellation token,
+    /// and the event source awaits all returned tasks.
+    /// </remarks>
     public static event EventHandler<FileSystemEventResultEventArgs> OnManagerCanceled;
 
     /// <summary>
