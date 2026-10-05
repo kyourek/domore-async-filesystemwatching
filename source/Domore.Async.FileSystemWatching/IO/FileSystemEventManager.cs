@@ -24,50 +24,75 @@ public sealed class FileSystemEventManager {
 
     private async Task<bool> ErrorHandler(Exception exception, CancellationToken token) {
         var handler = OnUnhandledError;
-        var handled = handler?.Invoke(exception, token);
-        if (handled is not null) {
-            return await handled;
+        if (handler is not null) {
+            var
+            args = new FileSystemEventUnhandledErrorEventArgs();
+            handler?.Invoke(this, args);
+            var results = await args.Run(exception, token);
+            return results.Any(i => i);
         }
         return false;
     }
 
     private async Task ResultHandler(FileSystemEventResult[] results, CancellationToken token) {
         if (results?.Length > 0) {
+            var raisedResults = new List<FileSystemEventResult>();
+            var raisedEvents = new List<FileSystemEventResultEventArgs>();
             var complete = results.Where(i => i.Canceled is false && i.Exception is null);
             var completeHandler = OnSubscriptionEventComplete;
-            var completeHandlers = complete.Select(i => completeHandler?.Invoke(i, token) ?? Task.CompletedTask);
+            foreach (var result in complete) {
+                var args = new FileSystemEventResultEventArgs();
+                completeHandler?.Invoke(this, args);
+                raisedResults.Add(result);
+                raisedEvents.Add(args);
+            }
             var canceled = results.Where(i => i.Canceled);
             var canceledHandler = OnSubscriptionEventCanceled;
-            var canceledHandlers = canceled.Select(i => canceledHandler?.Invoke(i, token) ?? Task.CompletedTask);
+            foreach (var result in canceled) {
+                var args = new FileSystemEventResultEventArgs();
+                canceledHandler?.Invoke(this, args);
+                raisedResults.Add(result);
+                raisedEvents.Add(args);
+            }
             var error = results.Where(i => i.Canceled is false && i.Exception is not null);
             var errorHandler = OnSubscriptionEventError;
-            var errorHandlers = error.Select(i => errorHandler?.Invoke(i, token) ?? Task.CompletedTask);
-            var allHandlers = completeHandlers.Concat(canceledHandlers).Concat(errorHandlers);
-            await Task.WhenAll(allHandlers);
+            foreach (var result in error) {
+                var args = new FileSystemEventResultEventArgs();
+                errorHandler?.Invoke(this, args);
+                raisedResults.Add(result);
+                raisedEvents.Add(args);
+            }
+            var tasks = new List<Task>();
+            for (var i = 0; i < raisedEvents.Count; i++) {
+                var args = raisedEvents[i];
+                var result = raisedResults[i];
+                tasks.AddRange(args.Run(result, token));
+            }
+            await Task.WhenAll(tasks);
         }
     }
 
     internal TimeSpan ClearDelay { get; set; } = TimeSpan.FromSeconds(1);
 
     /// <summary>
-    /// Gets or sets the handler invoked when an unhandled error occurs while processing file-system events.
+    /// Occurs when an unhandled error occurs while processing file-system events.
     /// </summary>
-    public Func<Exception, CancellationToken, Task<bool>> OnUnhandledError { get; set; }
+    public event EventHandler<FileSystemEventUnhandledErrorEventArgs> OnUnhandledError;
 
     /// <summary>
-    /// Gets or sets the handler invoked when a subscription event completes successfully.
+    /// Occurs when a subscription event completes successfully.
     /// </summary>
-    public Func<FileSystemEventResult, CancellationToken, Task> OnSubscriptionEventComplete { get; set; }
+    public event EventHandler<FileSystemEventResultEventArgs> OnSubscriptionEventComplete;
 
     /// <summary>
-    /// Gets or sets the handler invoked when a subscription event is canceled.
+    /// Occurs when a subscription event is canceled.
     /// </summary>
-    public Func<FileSystemEventResult, CancellationToken, Task> OnSubscriptionEventCanceled { get; set; }
+    public event EventHandler<FileSystemEventResultEventArgs> OnSubscriptionEventCanceled;
 
     /// <summary>
-    /// Gets or sets the handler invoked when a subscription event fails with an error.
+    /// Occurs when a subscription event fails with an error.
     /// </summary>
-    public Func<FileSystemEventResult, CancellationToken, Task> OnSubscriptionEventError { get; set; }
+    public event EventHandler<FileSystemEventResultEventArgs> OnSubscriptionEventError;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="FileSystemEventManager"/> class.

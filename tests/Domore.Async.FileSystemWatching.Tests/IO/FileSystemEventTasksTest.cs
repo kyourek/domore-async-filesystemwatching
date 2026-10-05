@@ -96,4 +96,49 @@ internal sealed class FileSystemEventTasksTest {
             }
         }
     }
+
+    [Test]
+    public async Task Events_StaticEvent_InvokesAllHandlersAndAwaitsTheirTasks() {
+        var path = Path.Combine(TempPath, nameof(Events_StaticEvent_InvokesAllHandlersAndAwaitsTheirTasks));
+        var expected = new InvalidOperationException();
+        var actual = new TaskCompletionSource<Exception>();
+        var subscriberCount = 0;
+        File.WriteAllText(path, "foo");
+        EventHandler<FileSystemEventResultEventArgs> first = (_, eventArgs) => {
+            Interlocked.Increment(ref subscriberCount);
+            eventArgs.Add((_, _) => {
+                var allSubscribersInvoked = Volatile.Read(ref subscriberCount) == 2;
+                if (allSubscribersInvoked) {
+                    return Task.FromException(expected);
+                }
+                return Task.FromException(new InvalidOperationException("Not all subscribers ran before the task delegate."));
+            });
+        };
+        EventHandler<FileSystemEventResultEventArgs> second = (_, eventArgs) => {
+            Interlocked.Increment(ref subscriberCount);
+            eventArgs.Add((_, _) => Task.CompletedTask);
+        };
+        EventHandler<FileSystemEventUnhandledErrorEventArgs> error = (_, eventArgs) => {
+            eventArgs.Add((exception, _) => {
+                actual.TrySetResult(exception);
+                return Task.FromResult(false);
+            });
+        };
+        FileSystemEventTasks.OnSubscriptionEventComplete += first;
+        FileSystemEventTasks.OnSubscriptionEventComplete += second;
+        FileSystemEventTasks.OnUnhandledError += error;
+        using var subscription = FileSystemEventTasks.Add(TempPath, (_, _) => Task.CompletedTask);
+        try {
+            await Task.Delay(250);
+            File.WriteAllText(path, "bar");
+            Assert.That(SpinWait.SpinUntil(() => actual.Task.IsCompleted, 2500), Is.True);
+            Assert.That(await actual.Task, Is.SameAs(expected));
+            Assert.That(subscriberCount, Is.EqualTo(2));
+        }
+        finally {
+            FileSystemEventTasks.OnSubscriptionEventComplete -= first;
+            FileSystemEventTasks.OnSubscriptionEventComplete -= second;
+            FileSystemEventTasks.OnUnhandledError -= error;
+        }
+    }
 }

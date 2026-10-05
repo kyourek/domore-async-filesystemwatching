@@ -1,6 +1,7 @@
 ﻿using Domore.IO.FileSystemEventSubscriptions;
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -10,20 +11,30 @@ namespace Domore.IO;
 /// Adds callbacks for file-system events.
 /// </summary>
 public static class FileSystemEventTasks {
-    private static readonly FileSystemEventManager Manager = new() {
-        OnSubscriptionEventCanceled = (result, token) => {
-            return OnSubscriptionEventCanceled?.Invoke(result, token) ?? Task.CompletedTask;
-        },
-        OnSubscriptionEventComplete = (result, token) => {
-            return OnSubscriptionEventComplete?.Invoke(result, token) ?? Task.CompletedTask;
-        },
-        OnSubscriptionEventError = (result, token) => {
-            return OnSubscriptionEventError?.Invoke(result, token) ?? Task.CompletedTask;
-        },
-        OnUnhandledError = (exception, token) => {
-            return OnUnhandledError?.Invoke(exception, token) ?? Task.FromResult(false);
-        },
-    };
+    private static readonly FileSystemEventManager Manager = new();
+
+    static FileSystemEventTasks() {
+        Manager.OnSubscriptionEventCanceled += (s, e) => {
+            OnSubscriptionEventCanceled?.Invoke(s, e);
+        };
+        Manager.OnSubscriptionEventComplete += (s, e) => {
+            OnSubscriptionEventComplete?.Invoke(s, e);
+        };
+        Manager.OnSubscriptionEventError += (s, e) => {
+            OnSubscriptionEventError?.Invoke(s, e);
+        };
+        Manager.OnUnhandledError += (s, e) => {
+            OnUnhandledError?.Invoke(s, e);
+        };
+    }
+
+    private static async Task<bool> RaiseUnhandledError(Exception exception, CancellationToken token) {
+        var eventArgs = new FileSystemEventUnhandledErrorEventArgs();
+        var handler = OnUnhandledError;
+        handler?.Invoke(null, eventArgs);
+        var results = await eventArgs.Run(exception, token);
+        return results.Any(i => i);
+    }
 
     private static async Task
     Manage(FileSystemEventSubscription subscription,
@@ -48,66 +59,59 @@ public static class FileSystemEventTasks {
                 Subscription = subscription,
             };
             if (result.Canceled) {
+                var eventArgs = new FileSystemEventResultEventArgs();
                 var handler = OnManagerCanceled;
-                var handled = handler?.Invoke(result, token);
-                if (handled is not null) {
-                    await handled;
-                }
+                handler?.Invoke(null, eventArgs);
+                var tasks = eventArgs.Run(result, token);
+                await Task.WhenAll(tasks);
                 return;
             }
             if (result.Exception is not null) {
+                var eventArgs = new FileSystemEventResultEventArgs();
                 var handler = OnManagerError;
-                var handled = handler?.Invoke(result, token);
-                if (handled is not null) {
-                    await handled;
-                }
+                handler?.Invoke(null, eventArgs);
+                var tasks = eventArgs.Run(result, token);
+                await Task.WhenAll(tasks);
                 return;
             }
         }
         catch (Exception ex) {
-            var handler = OnUnhandledError;
-            if (handler is null) {
+            var handled = await RaiseUnhandledError(ex, token);
+            if (handled != true) {
                 throw;
-            }
-            var handled = handler?.Invoke(ex, token);
-            if (handled is not null) {
-                var result = await handled;
-                if (result != true) {
-                    throw;
-                }
             }
         }
     }
 
     /// <summary>
-    /// Gets or sets the handler invoked when an unhandled error occurs while managing file-system events.
+    /// Occurs when an unhandled error occurs while managing file-system events.
     /// </summary>
-    public static Func<Exception, CancellationToken, Task<bool>> OnUnhandledError { get; set; }
+    public static event EventHandler<FileSystemEventUnhandledErrorEventArgs> OnUnhandledError;
 
     /// <summary>
-    /// Gets or sets the handler invoked when a subscription event completes successfully.
+    /// Occurs when a subscription event completes successfully.
     /// </summary>
-    public static Func<FileSystemEventResult, CancellationToken, Task> OnSubscriptionEventComplete { get; set; }
+    public static event EventHandler<FileSystemEventResultEventArgs> OnSubscriptionEventComplete;
 
     /// <summary>
-    /// Gets or sets the handler invoked when a subscription event is canceled.
+    /// Occurs when a subscription event is canceled.
     /// </summary>
-    public static Func<FileSystemEventResult, CancellationToken, Task> OnSubscriptionEventCanceled { get; set; }
+    public static event EventHandler<FileSystemEventResultEventArgs> OnSubscriptionEventCanceled;
 
     /// <summary>
-    /// Gets or sets the handler invoked when a subscription event fails with an error.
+    /// Occurs when a subscription event fails with an error.
     /// </summary>
-    public static Func<FileSystemEventResult, CancellationToken, Task> OnSubscriptionEventError { get; set; }
+    public static event EventHandler<FileSystemEventResultEventArgs> OnSubscriptionEventError;
 
     /// <summary>
-    /// Gets or sets the handler invoked when a manager operation fails with an error.
+    /// Occurs when a manager operation fails with an error.
     /// </summary>
-    public static Func<FileSystemEventResult, CancellationToken, Task> OnManagerError { get; set; }
+    public static event EventHandler<FileSystemEventResultEventArgs> OnManagerError;
 
     /// <summary>
-    /// Gets or sets the handler invoked when a manager operation is canceled.
+    /// Occurs when a manager operation is canceled.
     /// </summary>
-    public static Func<FileSystemEventResult, CancellationToken, Task> OnManagerCanceled { get; set; }
+    public static event EventHandler<FileSystemEventResultEventArgs> OnManagerCanceled;
 
     /// <summary>
     /// Adds a callback for a file-system event.

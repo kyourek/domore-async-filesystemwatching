@@ -116,10 +116,13 @@ internal sealed class FileSystemEventManagerTest {
             Agent = (_, _) => Task.CompletedTask
         };
         var actual = new TaskCompletionSource<FileSystemEventResult>();
-        Subject.OnSubscriptionEventComplete = (result, _) => {
-            actual.TrySetResult(result);
-            return Task.CompletedTask;
+        EventHandler<FileSystemEventResultEventArgs> handler = (_, eventArgs) => {
+            eventArgs.Add((result, _) => {
+                actual.TrySetResult(result);
+                return Task.CompletedTask;
+            });
         };
+        Subject.OnSubscriptionEventComplete += handler;
         try {
             await Subject.Add(subscription, TempPath, options: null, token: default);
             await Task.Delay(250);
@@ -133,6 +136,55 @@ internal sealed class FileSystemEventManagerTest {
             }
         }
         finally {
+            Subject.OnSubscriptionEventComplete -= handler;
+            await Subject.Remove(subscription, TempPath, options: null, token: default);
+        }
+    }
+
+    [Test]
+    public async Task Events_CompletedSubscription_InvokesAllHandlersAndAwaitsTheirTasks() {
+        var path = Path.Combine(TempPath, nameof(Events_CompletedSubscription_InvokesAllHandlersAndAwaitsTheirTasks));
+        var expected = new InvalidOperationException();
+        var actual = new TaskCompletionSource<Exception>();
+        var subscription = new ProxyFileSystemEventSubscription {
+            Agent = (_, _) => Task.CompletedTask
+        };
+        var subscriberCount = 0;
+        EventHandler<FileSystemEventResultEventArgs> first = (_, eventArgs) => {
+            Interlocked.Increment(ref subscriberCount);
+            eventArgs.Add((_, _) => {
+                var allSubscribersInvoked = Volatile.Read(ref subscriberCount) == 2;
+                if (allSubscribersInvoked) {
+                    return Task.FromException(expected);
+                }
+                return Task.FromException(new InvalidOperationException("Not all subscribers ran before the task delegate."));
+            });
+        };
+        EventHandler<FileSystemEventResultEventArgs> second = (_, eventArgs) => {
+            Interlocked.Increment(ref subscriberCount);
+            eventArgs.Add((_, _) => Task.CompletedTask);
+        };
+        EventHandler<FileSystemEventUnhandledErrorEventArgs> error = (_, eventArgs) => {
+            eventArgs.Add((exception, _) => {
+                actual.TrySetResult(exception);
+                return Task.FromResult(false);
+            });
+        };
+        Subject.OnSubscriptionEventComplete += first;
+        Subject.OnSubscriptionEventComplete += second;
+        Subject.OnUnhandledError += error;
+        try {
+            await Subject.Add(subscription, TempPath, options: null, token: default);
+            await Task.Delay(250);
+            File.WriteAllText(path, "foo");
+            Assert.That(SpinWait.SpinUntil(() => actual.Task.IsCompleted, 2500), Is.True);
+            Assert.That(await actual.Task, Is.SameAs(expected));
+            Assert.That(subscriberCount, Is.EqualTo(2));
+        }
+        finally {
+            Subject.OnSubscriptionEventComplete -= first;
+            Subject.OnSubscriptionEventComplete -= second;
+            Subject.OnUnhandledError -= error;
             await Subject.Remove(subscription, TempPath, options: null, token: default);
         }
     }
@@ -145,10 +197,13 @@ internal sealed class FileSystemEventManagerTest {
             Agent = (_, _) => Task.FromException(expected)
         };
         var actual = new TaskCompletionSource<FileSystemEventResult>();
-        Subject.OnSubscriptionEventError = (result, _) => {
-            actual.TrySetResult(result);
-            return Task.CompletedTask;
+        EventHandler<FileSystemEventResultEventArgs> handler = (_, eventArgs) => {
+            eventArgs.Add((result, _) => {
+                actual.TrySetResult(result);
+                return Task.CompletedTask;
+            });
         };
+        Subject.OnSubscriptionEventError += handler;
         try {
             await Subject.Add(subscription, TempPath, options: null, token: default);
             await Task.Delay(250);
@@ -162,6 +217,7 @@ internal sealed class FileSystemEventManagerTest {
             }
         }
         finally {
+            Subject.OnSubscriptionEventError -= handler;
             await Subject.Remove(subscription, TempPath, options: null, token: default);
         }
     }

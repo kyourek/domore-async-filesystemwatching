@@ -42,24 +42,32 @@ Watching starts in the background shortly after `Add` returns, so changes made i
 
 ## Handle results and errors
 
-`FileSystemEventTasks` reports outcomes through optional static handlers. Each receives a `FileSystemEventResult` with the `Subscription`, whether it was `Canceled`, and any `Exception`:
+`FileSystemEventTasks` reports outcomes through static events. Each event handler can add task delegates to its event arguments with `Add`; the event source invokes and awaits those delegates after all handlers have run. Result delegates receive a `FileSystemEventResult` with the `Subscription`, whether it was `Canceled`, and any `Exception`:
 
 ```csharp
-FileSystemEventTasks.OnSubscriptionEventError = (result, token) => {
-    Console.Error.WriteLine($"A file handler failed: {result.Exception.Message}");
-    return Task.CompletedTask;
+FileSystemEventTasks.OnSubscriptionEventError += (_, eventArgs) => {
+    eventArgs.Add((result, token) => {
+        Console.Error.WriteLine($"A file handler failed: {result.Exception.Message}");
+        return Task.CompletedTask;
+    });
 };
 
-FileSystemEventTasks.OnManagerError = (result, token) => {
-    Console.Error.WriteLine($"Could not watch the directory: {result.Exception.Message}");
-    return Task.CompletedTask;
+FileSystemEventTasks.OnManagerError += (_, eventArgs) => {
+    eventArgs.Add((result, token) => {
+        Console.Error.WriteLine($"Could not watch the directory: {result.Exception.Message}");
+        return Task.CompletedTask;
+    });
 };
 
-FileSystemEventTasks.OnUnhandledError = (exception, token) => {
-    Console.Error.WriteLine($"The watcher failed: {exception.Message}");
-    return Task.FromResult(true); // restart the watcher
+FileSystemEventTasks.OnUnhandledError += (_, eventArgs) => {
+    eventArgs.Add((exception, token) => {
+        Console.Error.WriteLine($"The watcher failed: {exception.Message}");
+        return Task.FromResult(true); // request a watcher restart
+    });
 };
 ```
+
+Unhandled-error subscribers add delegates that return `Task<bool>`. The watcher restarts after the tasks finish if any delegate returns `true`.
 
 | Handler | Called when |
 |---------|-------------|
@@ -68,7 +76,7 @@ FileSystemEventTasks.OnUnhandledError = (exception, token) => {
 | `OnSubscriptionEventCanceled` | A callback is canceled because its watcher stopped. |
 | `OnManagerError` | Adding or removing a subscription fails, for example because the directory doesn't exist. |
 | `OnManagerCanceled` | Adding or removing a subscription is canceled. |
-| `OnUnhandledError` | The watcher itself fails, for example when its buffer overflows. Return `true` to restart the watcher after a short delay, or `false` to stop it. |
+| `OnUnhandledError` | The watcher itself fails, for example when its buffer overflows. If any subscriber's task returns `true`, the watcher restarts after a short delay. |
 
 ## Stream events
 
@@ -104,8 +112,9 @@ public sealed class ReportImporter : FileSystemEventSubscription {
     }
 }
 
-var manager = new FileSystemEventManager {
-    OnSubscriptionEventError = (result, token) => LogAsync(result.Exception)
+var manager = new FileSystemEventManager();
+manager.OnSubscriptionEventError += (_, eventArgs) => {
+    eventArgs.Add((result, token) => LogAsync(result.Exception));
 };
 
 var importer = new ReportImporter();
